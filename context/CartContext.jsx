@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { isProductAvailable } from "../lib/productAvailability";
 
 const CartContext = createContext();
 
@@ -48,9 +49,10 @@ export const CartProvider = ({ children }) => {
   const cartItemsRef = useRef([]);
 
   const updateCartState = useCallback((items) => {
-    const summary = getCartSummary(items);
-    cartItemsRef.current = items;
-    setCartItems(items);
+    const availableItems = items.filter(isProductAvailable);
+    const summary = getCartSummary(availableItems);
+    cartItemsRef.current = availableItems;
+    setCartItems(availableItems);
     setItemCount(summary.itemCount);
     setTotalPrice(summary.totalPrice);
   }, []);
@@ -87,9 +89,11 @@ export const CartProvider = ({ children }) => {
   }, [updateCartState]);
 
   const addToCart = (product) => {
+    if (!isProductAvailable(product)) return false;
     const updatedItems = [...cartItemsRef.current, product];
     updateCartState(updatedItems);
     persistCart(updatedItems);
+    return true
   };
 
   const removeFromCart = (product) => {
