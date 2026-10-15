@@ -1,6 +1,7 @@
 "use client"
 import { createContext, useContext, useEffect, useState } from "react";
 import { restoreCart } from "../lib/cartStorage";
+import { isProductAvailable } from "../lib/productAvailability";
 
 const CartContext = createContext();
 
@@ -14,15 +15,24 @@ export const CartProvider = ({ children }) => {
 
   useEffect(() => {
     const restored = restoreCart(window.localStorage);
-    setCartItems(restored.items);
-    setItemCount(restored.itemCount);
-    setTotalPrice(restored.totalPrice);
-    if (restored.recovered) {
+    const items = restored.items.filter(isProductAvailable);
+    const itemCount = items.length;
+    const totalPrice = items.reduce((total, item) => total + (Number(item.price) || 0), 0);
+    setCartItems(items);
+    setItemCount(itemCount);
+    setTotalPrice(totalPrice);
+    if (items.length !== restored.items.length) {
+      window.localStorage.setItem("cartItems", JSON.stringify(items));
+      window.localStorage.setItem("itemCount", String(itemCount));
+      window.localStorage.setItem("totalPrice", String(totalPrice));
+    }
+    if (restored.recovered || items.length !== restored.items.length) {
       setCartRecoveryMessage("Invalid saved cart data was removed. Your remaining cart is ready.");
     }
   }, []);
 
   const addToCart = (product) => {
+    if (!isProductAvailable(product)) return false;
     setCartItems((prevCartItems) => {
       const updatedCartItems = [...prevCartItems, product];
       localStorage.setItem("cartItems", JSON.stringify(updatedCartItems));
@@ -38,6 +48,7 @@ export const CartProvider = ({ children }) => {
       localStorage.setItem("totalPrice", newTotalPrice.toString());
       return newTotalPrice;
     });
+    return true;
   };
 
   const removeFromCart = (product) => {
