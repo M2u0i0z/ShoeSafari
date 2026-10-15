@@ -1,5 +1,6 @@
 "use client"
 import { createContext, useContext, useEffect, useState } from "react";
+import { restoreCart } from "../lib/cartStorage";
 
 const CartContext = createContext();
 
@@ -9,16 +10,16 @@ export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
   const [itemCount, setItemCount] = useState(0);
   const [totalPrice, setTotalPrice] = useState(0);
+  const [cartRecoveryMessage, setCartRecoveryMessage] = useState("");
 
   useEffect(() => {
-    const storedCartItems = JSON.parse(localStorage.getItem("cartItems")) || [];
-    const storedItemCount = parseInt(localStorage.getItem("itemCount")) || 0;
-    const storedTotalPrice =
-      parseFloat(localStorage.getItem("totalPrice")) || 0;
-
-    setCartItems(storedCartItems);
-    setItemCount(storedItemCount);
-    setTotalPrice(storedTotalPrice);
+    const restored = restoreCart(window.localStorage);
+    setCartItems(restored.items);
+    setItemCount(restored.itemCount);
+    setTotalPrice(restored.totalPrice);
+    if (restored.recovered) {
+      setCartRecoveryMessage("Invalid saved cart data was removed. Your remaining cart is ready.");
+    }
   }, []);
 
   const addToCart = (product) => {
@@ -80,6 +81,7 @@ export const CartProvider = ({ children }) => {
         cartItems,
         itemCount,
         totalPrice,
+        cartRecoveryMessage,
         addToCart,
         removeFromCart,
         clearCart,
