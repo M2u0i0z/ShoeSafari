@@ -1,4 +1,5 @@
 "use client";
+
 import {
   createContext,
   useCallback,
@@ -7,35 +8,13 @@ import {
   useRef,
   useState,
 } from "react";
+import { restoreCart } from "../lib/cartStorage";
 import { isProductAvailable } from "../lib/productAvailability";
+import { isProductPurchasable } from "../lib/productCatalog";
 
 const CartContext = createContext();
 
 export const useCart = () => useContext(CartContext);
-
-const parseCartItems = (serializedItems) => {
-  if (typeof serializedItems !== "string") return null;
-
-  try {
-    const items = JSON.parse(serializedItems);
-    if (
-      !Array.isArray(items) ||
-      !items.every(
-        (item) =>
-          item &&
-          typeof item === "object" &&
-          item.id !== undefined &&
-          Number.isFinite(Number(item.price)),
-      )
-    ) {
-      return null;
-    }
-
-    return items;
-  } catch {
-    return null;
-  }
-};
 
 const getCartSummary = (items) => ({
   itemCount: items.length,
@@ -46,15 +25,19 @@ export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
   const [itemCount, setItemCount] = useState(0);
   const [totalPrice, setTotalPrice] = useState(0);
+  const [cartRecoveryMessage, setCartRecoveryMessage] = useState("");
   const cartItemsRef = useRef([]);
 
   const updateCartState = useCallback((items) => {
-    const availableItems = items.filter(isProductAvailable);
-    const summary = getCartSummary(availableItems);
-    cartItemsRef.current = availableItems;
-    setCartItems(availableItems);
+    const purchasableItems = items.filter(
+      (item) => isProductAvailable(item) && isProductPurchasable(item),
+    );
+    const summary = getCartSummary(purchasableItems);
+    cartItemsRef.current = purchasableItems;
+    setCartItems(purchasableItems);
     setItemCount(summary.itemCount);
     setTotalPrice(summary.totalPrice);
+    return purchasableItems;
   }, []);
 
   const persistCart = (items) => {
@@ -64,36 +47,37 @@ export const CartProvider = ({ children }) => {
     localStorage.setItem("totalPrice", String(summary.totalPrice));
   };
 
+  const restoreLatestCart = useCallback(() => {
+    const restored = restoreCart(window.localStorage);
+    const items = updateCartState(restored.items);
+    if (restored.recovered || items.length !== restored.items.length) {
+      setCartRecoveryMessage(
+        "Invalid or unavailable saved cart items were removed. Your remaining cart is ready.",
+      );
+    }
+  }, [updateCartState]);
+
   useEffect(() => {
-    const storedItems = localStorage.getItem("cartItems");
-    const parsedItems = storedItems === null ? [] : parseCartItems(storedItems);
-    if (parsedItems) updateCartState(parsedItems);
+    restoreLatestCart();
 
     const handleStorage = (event) => {
       if (event.storageArea && event.storageArea !== window.localStorage) return;
       if (event.key !== null && event.key !== "cartItems") return;
 
-      if (event.key === null) {
-        updateCartState([]);
-        return;
-      }
-
-      // Read the current value so a delayed event cannot replace a newer cart.
-      const latestValue = window.localStorage.getItem("cartItems");
-      const latestItems = latestValue === null ? [] : parseCartItems(latestValue);
-      if (latestItems) updateCartState(latestItems);
+      // Read current storage so a delayed event cannot replace a newer cart.
+      restoreLatestCart();
     };
 
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [updateCartState]);
+  }, [restoreLatestCart]);
 
   const addToCart = (product) => {
-    if (!isProductAvailable(product)) return false;
+    if (!isProductAvailable(product) || !isProductPurchasable(product)) return false;
     const updatedItems = [...cartItemsRef.current, product];
     updateCartState(updatedItems);
     persistCart(updatedItems);
-    return true
+    return true;
   };
 
   const removeFromCart = (product) => {
@@ -119,6 +103,7 @@ export const CartProvider = ({ children }) => {
         cartItems,
         itemCount,
         totalPrice,
+        cartRecoveryMessage,
         addToCart,
         removeFromCart,
         clearCart,
